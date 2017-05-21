@@ -1,4 +1,4 @@
 # ML-course-project
 **Pratical Machine Learning Course Project**
 
-See .html file
+Project html file : https://jetzgetzlos.github.io/ML-course-project/ML-project.html
