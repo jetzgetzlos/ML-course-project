@@ -1,0 +1,162 @@
+---
+title: "ML Project"
+author: "jetzgetzlos"
+date: "21 mai 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. 
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+The training data for this project are available here:  https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+## Getting and Clean Data - Exploratory Analysis
+```{r}
+training <- read.csv("pml-training.csv", na.strings = c("NA", ""))
+testing <- read.csv("pml-testing.csv", na.strings = c("NA", ""))
+```
+
+The training dataset has 19622 obs. of 160 variables.
+The testing dataset gas 20 obs. of 160 variables.
+
+The outcome is the "classe" column of the training data set. There are 5 levels: A, B, C, D abd E. (respectively Sitting, Sitting down, Standing, Standing up and Walking).
+
+**Cleaning data, step #1** : We can remove the first 7 columns (id, name, timestamp ...) which have poorlry relationships with `classe` column. We choose also to ignore columns which were pre-processed or computed : _ie._ column which name begin with _avg, var, max, min, std, kurtosis or skewness_ : we want to keep only probe measures.
+
+```{r}
+training <- training[,-c(1:7)]
+rm_col <- grep("avg_*|var_*|max_*|min_*|std_*|kurtosis_*|skewness_*|total_*|amplitude*",
+               names(training))
+training <- training[,-rm_col]
+```
+
+**testing NA values** : Check if there are any missing values:
+```{r}
+anyNA(training)
+```
+It seems Ok.
+
+
+
+_The tesing dataset will be processed exactly in the same way to keep the same columns_.
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+testing <- testing[,-c(1:7)]
+rm_col <- grep("avg_*|var_*|max_*|min_*|std_*|kurtosis_*|skewness_*|total_*|amplitude*",
+               names(testing))
+testing <- testing[,-rm_col]
+```
+
+## Data Splitting for cross validation
+
+60% of the data for the training process and 40% for the testing process. 
+```{r, message=FALSE, warning=FALSE}
+library(caret)
+```
+
+```{r}
+set.seed(1805)
+inTrain <- createDataPartition(training$classe, p = 0.6, list = FALSE)
+train_df <- training[inTrain, ]
+test_df <- training[-inTrain, ]
+```
+
+## Classification models
+
+We try to classify raws into 5 classes. So, we will try 3 different methods : Simple Tree Prediction, boosting (gbm) and Random Forest (subset and full dataset because of this method which is very time-consuming)
+
+### Simple Tree Prediction (rpart)
+
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+
+modFit_tree <- train(classe ~ ., method="rpart", data =train_df )
+print(modFit_tree$finalModel)
+
+plot(modFit_tree$finalModel, uniform = TRUE,
+     main="Classification Tree")
+text(modFit_tree$finalModel, use.n=TRUE, all=TRUE, cex=0.5)
+```
+
+Testing the model with the testing 40% dataset
+```{r, message=FALSE, warning=FALSE}
+confusionMatrix(test_df$classe,predict(modFit_tree, newdata=test_df))$overall
+```
+*The accuracy is very low (<50%)*
+
+### Boosting with tree (bgm)
+
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+
+modFit_gbm <- train(classe ~ ., method="gbm", data =train_df, verbose = F)
+print(modFit_gbm$finalModel)
+```
+
+Testing the model with the testing dataset:
+```{r, message=FALSE, warning=FALSE}
+confusionMatrix(test_df$classe,predict(modFit_gbm, newdata=test_df))$overall
+```
+*The accuracy is *: `r round(confusionMatrix(test_df$classe,predict(modFit_gbm, newdata=test_df))$overall[1],2)`. It's quite good.
+
+
+### Using the model for the testing data set (for the quizz)
+```{r}
+predict(modFit_gbm, testing)
+```
+100% passed !
+
+### Random forest
+
+We subset the training data set to reduce the computing time (otherwise it is too long !!)
+
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+inTrain2 <- createDataPartition(training$classe, p = 0.2, list = FALSE)
+train_df2 <- training[inTrain2, ]
+test_df2 <- training[-inTrain2, ]
+
+modFit_rf <- train(classe ~ ., method="rf",data =train_df2, prox = TRUE)
+print(modFit_rf$finalModel)
+```
+
+Testing the model with the testing dataset :
+```{r, message=FALSE, warning=FALSE}
+confusionMatrix(test_df2$classe,predict(modFit_rf, newdata=test_df2))$overall
+```
+
+*The accuracy is * `r round(confusionMatrix(test_df2$classe,predict(modFit_rf, newdata=test_df2))$overall[1],2)`
+
+### Using the model for the testing data set (for the quizz)
+```{r}
+predict(modFit_rf, testing)
+```
+
+### Random forest (with full data set)
+
+The accuracy of the first attempt is quite good but it's maybe not enough. So, we try with th full data (8 hours of computed time !!)
+
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+
+modFit_rft <- train(classe ~ ., method="rf",data =train_df, prox = TRUE)
+print(modFit_rft$finalModel)
+```
+
+Testing the model with the testing dataset :
+```{r, message=FALSE, warning=FALSE}
+confusionMatrix(test_df$classe,predict(modFit_rft, newdata=test_df))$overall
+```
+
+The accuracy is `r round(confusionMatrix(test_df$classe,predict(modFit_rft, newdata=test_df))$overall[1],2)`. **It's very good !**
+
+
+
+## Conclusion
+
+The random forest algorithm, computed with the whole data set, appears to be a very good classification method for this use case (accelerometers measurements). Accuracy is very good. Nevertheless, this method is hightly time-consuming.
+
+
